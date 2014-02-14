@@ -395,6 +395,60 @@ def prepare_hive_dataset(opts):
     "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/scratch\\\";\"",
   user="hdfs")
 
+
+  ssh_hive(
+    "hive -e \"DROP TABLE IF EXISTS orc_rankings; " \
+    "CREATE EXTERNAL TABLE orc_rankings LIKE rankings LOCATION \\\"/tmp/benchmark/orc_rankings\\\";\"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"DROP TABLE IF EXISTS orc_uservisits; " \
+    "CREATE EXTERNAL TABLE orc_uservisits LIKE uservisits LOCATION \\\"/tmp/benchmark/orc_uservisits\\\";\"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"DROP TABLE IF EXISTS orc_documents; " \
+    "CREATE EXTERNAL TABLE orc_documents LIKE documents LOCATION \\\"/tmp/benchmark/orc_crawl\\\";\"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"DROP TABLE IF EXISTS orc_scratch; " \
+    "CREATE EXTERNAL TABLE orc_scratch LIKE scratch LOCATION \\\"/tmp/benchmark/orc_scratch\\\";\"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"ALTER TABLE orc_rankings SET FILEFORMAT ORC; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"ALTER TABLE orc_uservisits SET FILEFORMAT ORC; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"ALTER TABLE orc_documents SET FILEFORMAT ORC; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"ALTER TABLE orc_scratch SET FILEFORMAT ORC; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"INSERT OVERWRITE TABLE orc_rankings SELECT * FROM rankings; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"INSERT OVERWRITE TABLE orc_uservisits SELECT * FROM uservisits; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"INSERT OVERWRITE TABLE orc_documents SELECT * FROM documents; \"",
+  user="hdfs")
+
+  ssh_hive(
+    "hive -e \"INSERT OVERWRITE TABLE scratch SELECT * FROM scratch; \"",
+  user="hdfs")
+
+
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
 def prepare_tez(opts):
