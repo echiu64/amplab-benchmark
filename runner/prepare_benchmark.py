@@ -364,16 +364,16 @@ def prepare_hive_dataset(opts):
   ssh_hive(cp_scratch, user='hdfs')
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS rankings; " \
-    "CREATE EXTERNAL TABLE rankings (pageURL STRING, " \
+    "hive -e \"DROP TABLE IF EXISTS raw_rankings; " \
+    "CREATE EXTERNAL TABLE raw_rankings (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
     "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/rankings\\\";\"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS uservisits; " \
-    "CREATE EXTERNAL TABLE uservisits (sourceIP STRING, "\
+    "hive -e \"DROP TABLE IF EXISTS raw_uservisits; " \
+    "CREATE EXTERNAL TABLE raw_uservisits (sourceIP STRING, "\
     "destURL STRING," \
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \
@@ -382,14 +382,14 @@ def prepare_hive_dataset(opts):
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS documents; " \
-    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS TEXTFILE " \
+    "hive -e \"DROP TABLE IF EXISTS raw_documents; " \
+    "CREATE EXTERNAL TABLE raw_documents (line STRING) STORED AS TEXTFILE " \
     "LOCATION \\\"/tmp/benchmark/crawl\\\";\"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS scratch; " \
-    "CREATE EXTERNAL TABLE scratch (pageURL STRING, " \
+    "hive -e \"DROP TABLE IF EXISTS raw_scratch; " \
+    "CREATE EXTERNAL TABLE raw_scratch (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
     "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/scratch\\\";\"",
@@ -397,55 +397,55 @@ def prepare_hive_dataset(opts):
 
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS orc_rankings; " \
-    "CREATE EXTERNAL TABLE orc_rankings LIKE rankings LOCATION \\\"/tmp/benchmark/orc_rankings\\\";\"",
+    "hive -e \"DROP TABLE IF EXISTS rankings; " \
+    "CREATE EXTERNAL TABLE rankings LIKE raw_rankings LOCATION \\\"/tmp/benchmark/orc_rankings\\\";\"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS orc_uservisits; " \
-    "CREATE EXTERNAL TABLE orc_uservisits LIKE uservisits LOCATION \\\"/tmp/benchmark/orc_uservisits\\\";\"",
+    "hive -e \"DROP TABLE IF EXISTS uservisits; " \
+    "CREATE EXTERNAL TABLE uservisits LIKE raw_uservisits LOCATION \\\"/tmp/benchmark/orc_uservisits\\\";\"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS orc_documents; " \
-    "CREATE EXTERNAL TABLE orc_documents LIKE documents LOCATION \\\"/tmp/benchmark/orc_crawl\\\";\"",
+    "hive -e \"DROP TABLE IF EXISTS documents; " \
+    "CREATE EXTERNAL TABLE documents LIKE raw_documents LOCATION \\\"/tmp/benchmark/orc_crawl\\\";\"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"DROP TABLE IF EXISTS orc_scratch; " \
-    "CREATE EXTERNAL TABLE orc_scratch LIKE scratch LOCATION \\\"/tmp/benchmark/orc_scratch\\\";\"",
+    "hive -e \"DROP TABLE IF EXISTS scratch; " \
+    "CREATE EXTERNAL TABLE scratch LIKE raw_scratch LOCATION \\\"/tmp/benchmark/orc_scratch\\\";\"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"ALTER TABLE orc_rankings SET FILEFORMAT ORC; \"",
+    "hive -e \"ALTER TABLE rankings SET FILEFORMAT ORC; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"ALTER TABLE orc_uservisits SET FILEFORMAT ORC; \"",
+    "hive -e \"ALTER TABLE uservisits SET FILEFORMAT ORC; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"ALTER TABLE orc_documents SET FILEFORMAT ORC; \"",
+    "hive -e \"ALTER TABLE documents SET FILEFORMAT ORC; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"ALTER TABLE orc_scratch SET FILEFORMAT ORC; \"",
+    "hive -e \"ALTER TABLE scratch SET FILEFORMAT ORC; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"INSERT OVERWRITE TABLE orc_rankings SELECT * FROM rankings; \"",
+    "hive -e \"INSERT OVERWRITE TABLE rankings SELECT * FROM raw_rankings; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"INSERT OVERWRITE TABLE orc_uservisits SELECT * FROM uservisits; \"",
+    "hive -e \"INSERT OVERWRITE TABLE uservisits SELECT * FROM raw_uservisits; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"INSERT OVERWRITE TABLE orc_documents SELECT * FROM documents; \"",
+    "hive -e \"INSERT OVERWRITE TABLE documents SELECT * FROM raw_documents; \"",
   user="hdfs")
 
   ssh_hive(
-    "hive -e \"INSERT OVERWRITE TABLE scratch SELECT * FROM scratch; \"",
+    "hive -e \"INSERT OVERWRITE TABLE scratch SELECT * FROM raw_scratch; \"",
   user="hdfs")
 
 
