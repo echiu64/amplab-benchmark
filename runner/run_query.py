@@ -7,6 +7,10 @@
 
 import subprocess
 import sys
+import time
+
+sys.path += ["/grid/0/tez-autobuild/dist/hive/lib/py"]
+
 from sys import stderr
 from optparse import OptionParser
 import os
@@ -16,6 +20,15 @@ import re
 import multiprocessing
 from StringIO import StringIO
 from pg8000 import DBAPI
+
+import sys
+from hive_service import ThriftHive
+from hive_service.ttypes import HiveServerException
+
+from thrift import Thrift
+from thrift.transport import TSocket
+from thrift.transport import TTransport
+from thrift.protocol import TBinaryProtocol
 
 # A scratch directory on your filesystem
 LOCAL_TMP_DIR = "/tmp"
@@ -35,16 +48,16 @@ QUERY_2a_HQL = "SELECT SUBSTR(sourceIP, 1, 8), SUM(adRevenue) FROM " \
 QUERY_2b_HQL = QUERY_2a_HQL.replace("8", "10")
 QUERY_2c_HQL = QUERY_2a_HQL.replace("8", "12")
 
-QUERY_3a_HQL = """SELECT sourceIP, 
-                          sum(adRevenue) as totalRevenue, 
-                          avg(pageRank) as pageRank 
+QUERY_3a_HQL = """SELECT sourceIP,
+                          sum(adRevenue) as totalRevenue,
+                          avg(pageRank) as pageRank
                    FROM
                      rankings R JOIN
-                     (SELECT sourceIP, destURL, adRevenue 
-                      FROM uservisits UV 
+                     (SELECT sourceIP, destURL, adRevenue
+                      FROM uservisits UV
                       WHERE UV.visitDate > "1980-01-01"
-                      AND UV.visitDate < "1980-04-01") 
-                      NUV ON (R.pageURL = NUV.destURL) 
+                      AND UV.visitDate < "1980-04-01")
+                      NUV ON (R.pageURL = NUV.destURL)
                    GROUP BY sourceIP
                    ORDER BY totalRevenue DESC
                    LIMIT 1"""
@@ -53,24 +66,24 @@ QUERY_3b_HQL = QUERY_3a_HQL.replace("1980-04-01", "1983-01-01")
 QUERY_3c_HQL = QUERY_3a_HQL.replace("1980-04-01", "2010-01-01")
 
 QUERY_4_HQL = """DROP TABLE IF EXISTS url_counts_partial;
-                 CREATE TABLE url_counts_partial AS 
-                   SELECT TRANSFORM (line) 
-                   USING "python /root/url_count.py" as (sourcePage, 
+                 CREATE TABLE url_counts_partial AS
+                   SELECT TRANSFORM (line)
+                   USING "python /tmp/url_count.py" as (sourcePage,
                      destPage, count) from documents;
                  DROP TABLE IF EXISTS url_counts_total;
-                 CREATE TABLE url_counts_total AS 
-                   SELECT SUM(count) AS totalCount, destpage 
+                 CREATE TABLE url_counts_total AS
+                   SELECT SUM(count) AS totalCount, destpage
                    FROM url_counts_partial GROUP BY destpage;"""
 QUERY_4_HQL = " ".join(QUERY_4_HQL.replace("\n", "").split())
 
 QUERY_4_HQL_HIVE_UDF = """DROP TABLE IF EXISTS url_counts_partial;
-                 CREATE TABLE url_counts_partial AS 
-                   SELECT TRANSFORM (line) 
-                   USING "python /tmp/url_count.py" as (sourcePage, 
+                 CREATE TABLE url_counts_partial AS
+                   SELECT TRANSFORM (line)
+                   USING "python /tmp/url_count.py" as (sourcePage,
                      destPage, count) from documents;
                  DROP TABLE IF EXISTS url_counts_total;
-                 CREATE TABLE url_counts_total AS 
-                   SELECT SUM(count) AS totalCount, destpage 
+                 CREATE TABLE url_counts_total AS
+                   SELECT SUM(count) AS totalCount, destpage
                    FROM url_counts_partial GROUP BY destpage;"""
 QUERY_4_HQL_HIVE_UDF = " ".join(QUERY_4_HQL_HIVE_UDF.replace("\n", "").split())
 
@@ -93,7 +106,7 @@ QUERY_3a_SQL = """SELECT sourceIP, totalRevenue, avgPageRank
                               SUM(adRevenue) as totalRevenue
                       FROM Rankings AS R, UserVisits AS UV
                       WHERE R.pageURL = UV.destinationURL
-                      AND UV.visitDate 
+                      AND UV.visitDate
                         BETWEEN Date('1980-01-01') AND Date('1980-04-01')
                       GROUP BY UV.sourceIP)
                    ORDER BY totalRevenue DESC LIMIT 1""".replace("\n", "")
@@ -118,23 +131,23 @@ TEZ_MAP =    {'1a':(count(QUERY_1a_HQL),), '1b':(count(QUERY_1b_HQL),), '1c': (c
               '3a':(count(QUERY_3a_HQL),), '3b':(count(QUERY_3b_HQL),), '3c': (count(QUERY_3c_HQL),)}
 
 QUERY_MAP = {
-             '1a':  (create_as(QUERY_1a_HQL), insert_into(QUERY_1a_HQL), 
+             '1a':  (create_as(QUERY_1a_HQL), insert_into(QUERY_1a_HQL),
                      create_as(QUERY_1a_SQL)),
-             '1b':  (create_as(QUERY_1b_HQL), insert_into(QUERY_1b_HQL), 
+             '1b':  (create_as(QUERY_1b_HQL), insert_into(QUERY_1b_HQL),
                      create_as(QUERY_1b_SQL)),
-             '1c':  (create_as(QUERY_1c_HQL), insert_into(QUERY_1c_HQL), 
+             '1c':  (create_as(QUERY_1c_HQL), insert_into(QUERY_1c_HQL),
                      create_as(QUERY_1c_SQL)),
-             '2a': (create_as(QUERY_2a_HQL), insert_into(QUERY_2a_HQL), 
+             '2a': (create_as(QUERY_2a_HQL), insert_into(QUERY_2a_HQL),
                     create_as(QUERY_2a_SQL)),
-             '2b': (create_as(QUERY_2b_HQL), insert_into(QUERY_2b_HQL), 
+             '2b': (create_as(QUERY_2b_HQL), insert_into(QUERY_2b_HQL),
                     create_as(QUERY_2b_SQL)),
-             '2c': (create_as(QUERY_2c_HQL), insert_into(QUERY_2c_HQL), 
+             '2c': (create_as(QUERY_2c_HQL), insert_into(QUERY_2c_HQL),
                     create_as(QUERY_2c_SQL)),
-             '3a': (create_as(QUERY_3a_HQL), insert_into(QUERY_3a_HQL), 
+             '3a': (create_as(QUERY_3a_HQL), insert_into(QUERY_3a_HQL),
                     create_as(QUERY_3a_SQL)),
-             '3b': (create_as(QUERY_3b_HQL), insert_into(QUERY_3b_HQL), 
+             '3b': (create_as(QUERY_3b_HQL), insert_into(QUERY_3b_HQL),
                     create_as(QUERY_3b_SQL)),
-             '3c': (create_as(QUERY_3c_HQL), insert_into(QUERY_3c_HQL), 
+             '3c': (create_as(QUERY_3c_HQL), insert_into(QUERY_3c_HQL),
                     create_as(QUERY_3c_SQL)),
              '4':  (QUERY_4_HQL, None, None),
              '4_HIVE':  (QUERY_4_HQL_HIVE_UDF, None, None)}
@@ -168,11 +181,11 @@ def parse_args():
   parser.add_option("--hive-cdh", action="store_true", default=False,
       help="Hive on CDH cluster")
 
-  parser.add_option("-g", "--shark-no-cache", action="store_true", 
+  parser.add_option("-g", "--shark-no-cache", action="store_true",
       default=False, help="Disable caching in Shark")
   parser.add_option("--impala-use-hive", action="store_true",
-      default=False, help="Use Hive for query executio on Impala nodes") 
-  parser.add_option("-t", "--reduce-tasks", type="int", default=150, 
+      default=False, help="Use Hive for query executio on Impala nodes")
+  parser.add_option("-t", "--reduce-tasks", type="int", default=150,
       help="Number of reduce tasks in Shark")
   parser.add_option("-z", "--clear-buffer-cache", action="store_true",
       default=False, help="Clear disk buffer cache between query runs")
@@ -215,17 +228,17 @@ def parse_args():
     parser.print_help()
     sys.exit(1)
 
-  if opts.impala and (opts.impala_identity_file is None or 
+  if opts.impala and (opts.impala_identity_file is None or
                       opts.impala_hosts is None):
     print >> stderr, "Impala requires identity file and hostname"
     sys.exit(1)
-  
-  if opts.shark and (opts.shark_identity_file is None or 
+
+  if opts.shark and (opts.shark_identity_file is None or
                      opts.shark_host is None):
     print >> stderr, \
         "Shark requires identity file and hostname"
     sys.exit(1)
-  
+
   if opts.redshift and (opts.redshift_username is None or
                         opts.redshift_password is None or
                         opts.redshift_host is None or
@@ -245,14 +258,14 @@ def parse_args():
   if opts.query_num not in QUERY_MAP:
     print >> stderr, "Unknown query number: %s" % opts.query_num
     sys.exit(1)
-    
+
   return opts
 
 # Run a command on a host through ssh, throwing an exception if ssh fails
 def ssh(host, username, identity_file, command):
   return subprocess.check_call(
-      "ssh -t -o StrictHostKeyChecking=no -i %s %s@%s '%s'" %
-      (identity_file, username, host, command), shell=True)
+      "ssh -t -o StrictHostKeyChecking=no %s@%s '%s'" %
+      (username, host, command), shell=True)
 
 # Copy a file to a given host through scp, throwing an exception if scp fails
 def scp_to(host, identity_file, username, local_file, remote_file):
@@ -280,9 +293,9 @@ def run_shark_benchmark(opts):
   local_query_file = os.path.join(LOCAL_TMP_DIR, query_file_name)
   local_slaves_file = os.path.join(LOCAL_TMP_DIR, slaves_file_name)
   query_file = open(local_query_file, 'w')
-  remote_result_file = "/mnt/%s_results" % prefix
-  remote_tmp_file = "/mnt/%s_out" % prefix
-  remote_query_file = "/mnt/%s" % query_file_name
+  remote_result_file = "/tmp/%s_results" % prefix
+  remote_tmp_file = "/tmp/%s_out" % prefix
+  remote_query_file = "/tmp/%s" % query_file_name
 
   runner = "/root/shark/bin/shark-withinfo"
 
@@ -314,7 +327,7 @@ def run_shark_benchmark(opts):
     def convert_to_cached(query):
       return (make_output_cached(make_input_cached(query[0])), )
 
-    local_query_map = {k: convert_to_cached(v) for k, v in QUERY_MAP.items()}
+    #local_query_map = {k: convert_to_cached(v) for k, v in QUERY_MAP.items()}
 
     # Set up cached tables
     if '4' in opts.query_num:
@@ -376,7 +389,7 @@ def run_shark_benchmark(opts):
     ssh_shark("%s" % remote_query_file)
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
-        "/mnt/%s_results" % prefix, local_results_file)
+        "/tmp/%s_results" % prefix, local_results_file)
     content = open(local_results_file).readlines()
     all_times = map(lambda x: float(x.split(": ")[1].split(" ")[0]), content)
 
@@ -396,9 +409,9 @@ def run_shark_benchmark(opts):
     contents.append(content)
 
     # Clean-up
-    #ssh_shark("rm /mnt/%s*" % prefix)
+    #ssh_shark("rm /tmp/%s*" % prefix)
     print "Clean Up...."
-    ssh_shark("rm /mnt/%s_results" % prefix)
+    ssh_shark("rm /tmp/%s_results" % prefix)
     os.remove(local_results_file)
 
   os.remove(local_slaves_file)
@@ -408,7 +421,7 @@ def run_shark_benchmark(opts):
 
 def run_impala_benchmark(opts):
   impala_host = opts.impala_hosts[0]
-  def ssh_impala(command): 
+  def ssh_impala(command):
     ssh(impala_host, "ubuntu", opts.impala_identity_file, command)
 
   def clear_buffer_cache_impala(host):
@@ -449,13 +462,13 @@ def run_impala_benchmark(opts):
   query_file.write(
       "%s '%s%s' > %s 2>&1;\n" % (runner, connect_stmt, query, remote_tmp_file))
   query_file.write("cat %s |egrep 'Inserted|Time' |grep -v MapReduce >> %s;\n" % (
-      remote_tmp_file, remote_result_file)) 
+      remote_tmp_file, remote_result_file))
   query_file.write("hive -e '%s';\n" % CLEAN_QUERY)
   query_file.close()
 
   remote_query_file = "/tmp/%s" % query_file_name
   print >> stderr, "Copying files to Impala"
-  scp_to(impala_host, opts.impala_identity_file, "ubuntu", 
+  scp_to(impala_host, opts.impala_identity_file, "ubuntu",
       local_query_file, remote_query_file)
   ssh_impala("chmod 775 %s" % remote_query_file)
 
@@ -471,8 +484,8 @@ def run_impala_benchmark(opts):
 
   # Collect results
   local_result_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
-  scp_from(impala_host, opts.impala_identity_file, "ubuntu", 
-      remote_result_file, local_result_file) 
+  scp_from(impala_host, opts.impala_identity_file, "ubuntu",
+      remote_result_file, local_result_file)
   contents = open(local_result_file).readlines()
 
   if opts.impala_use_hive:
@@ -524,42 +537,50 @@ def run_hive_benchmark(opts):
     ssh(host, "root", opts.hive_identity_file,
         "sudo bash -c \"sync && echo 3 > /proc/sys/vm/drop_caches\"")
 
+  def execute_thrift(client, cmd, content):
+    start_time = time.time()
+    client.execute(cmd.replace(";",""))
+    execTime = time.time() - start_time
+    content += ("Time taken: " + str(execTime) + " seconds\n")
+    return execTime, content
+
+  def set_stinger_settings(client):
+      with open('./tez/Stinger-Preview-Quickstart/configs/stinger.settings', 'r') as f:
+        for line in f:
+          line = line.replace(";","")
+          line = line.replace("\n","")
+	  print line
+          execute_thrift(client, line, "")
+
+  def prettylist(lst):
+    return ",".join([str(k) for k in lst])
+
+
+
   prefix = str(time.time()).split(".")[0]
   query_file_name = "%s_workload.sh" % prefix
-  slaves_file_name = "%s_slaves" % prefix
   local_query_file = os.path.join(LOCAL_TMP_DIR, query_file_name)
-  local_slaves_file = os.path.join(LOCAL_TMP_DIR, slaves_file_name)
   query_file = open(local_query_file, 'w')
-  remote_result_file = "/mnt/%s_results" % prefix
-  remote_tmp_file = "/mnt/%s_out" % prefix
-  remote_query_file = "/mnt/%s" % query_file_name
+  remote_result_file = "/tmp/%s_results" % prefix
+  remote_tmp_file = "/tmp/%s_out" % prefix
 
-  query_list = "set mapreduce.reduce.input.limit = -1; set mapred.reduce.tasks = %s; " % opts.reduce_tasks
-  query_list += "DROP TABLE IF EXISTS scratch_rank;"
-  query_list += "CREATE TABLE scratch_rank AS SELECT pageURL, pageRank FROM scratch WHERE pageRank > 1000;"
+  query_list = ""
 
   if opts.tez:
     runner = "HIVE_HOME=/opt/apache-hive-0.13.0.2.1.0.0-92-bin HIVE_CONF_DIR=$HIVE_HOME/conf PATH=$HIVE_HOME/bin:$PATH HADOOP_CLASSPATH=/opt/tez-0.2.0.2.1.0.0-92/*:/opt/tez-0.2.0.2.1.0.0-92/lib/* HADOOP_USER_CLASSPATH_FIRST=true HADOOP_USER_NAME=hive /opt/apache-hive-0.13.0.2.1.0.0-92-bin/bin/hive -i /root/benchmark/runner/tez/Stinger-Preview-Quickstart/configs/stinger.settings -hiveconf hive.optimize.tez=true"
-    #query_map = TEZ_MAP
     query_map = QUERY_MAP
   else:
     runner = "HADOOP_USER_NAME=hdfs hive"
     query_map = QUERY_MAP
 
-  # Throw away query for JVM warmup
-  # query_list += "SELECT COUNT(*) FROM scratch;"
-
-  if '4' not in opts.query_num:
-    query_list += CLEAN_QUERY
-  else:
-    opts.query_num = '4_HIVE'
-
   query_list += query_map[opts.query_num][0]
 
   query_list = re.sub("\s\s+", " ", query_list.replace('\n', ' '))
 
+  query_list.replace(";","")
+
   print "\nQuery:"
-  print query_list.replace(';', ";\n")
+  print query_list.replace(';', "")
 
   query_file.write(
     "%s -e '%s' > %s 2>&1\n" % (runner, query_list, remote_tmp_file))
@@ -570,54 +591,78 @@ def run_hive_benchmark(opts):
 
   query_file.close()
 
-  print "Copying files to Hive"
-  scp_to(opts.hive_host, opts.hive_identity_file, "root", local_query_file,
-      remote_query_file)
-  ssh_hive("chmod 775 %s" % remote_query_file)
-
   # Run benchmark
   print "Running remote benchmark..."
+
 
   # Collect results
   results = []
   contents = []
 
-  for i in range(opts.num_trials):
-    print "Query %s : Trial %i" % (opts.query_num, i+1)
-    if opts.clear_buffer_cache:
-      print >> stderr, "Clearing Buffer Cache..."
-      map(clear_buffer_cache_hive, opts.hive_slaves)
-    ssh_hive("%s" % remote_query_file)
-    local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
-    scp_from(opts.hive_host, opts.hive_identity_file, "root",
-        "/mnt/%s_results" % prefix, local_results_file)
-    content = open(local_results_file).readlines()
-    all_times = map(lambda x: float(x.split(": ")[1].split(" ")[0]), content)
+  try:
 
-    if '4' in opts.query_num:
-      query_times = all_times[-4:]
-      part_a = query_times[1]
-      part_b = query_times[3]
-      print "Parts: %s, %s" % (part_a, part_b)
-      result = float(part_a) + float(part_b)
-    else:
-      result = all_times[-1] # Only want time of last query
+    # Make thrift connection
+    transport = TSocket.TSocket(opts.hive_host, 10000)
+    transport = TTransport.TBufferedTransport(transport)
+    protocol = TBinaryProtocol.TBinaryProtocol(transport)
+    client = ThriftHive.Client(protocol)
+    transport.open()
+    print "Opened connection"
 
-    print "Result: ", result
-    print "Raw Times: ", content
+    for i in range(opts.num_trials):
+      print "Query %s : Trial %i" % (opts.query_num, i+1)
+      if opts.clear_buffer_cache:
+        print >> stderr, "Clearing Buffer Cache..."
+        map(clear_buffer_cache_hive, opts.hive_slaves)
 
-    results.append(result)
-    contents.append(content)
 
-    # Clean-up
-    #ssh_hive("rm /mnt/%s*" % prefix)
-    print "Clean Up...."
-    ssh_hive("rm /mnt/%s_results" % prefix)
-    os.remove(local_results_file)
+      set_stinger_settings(client)
 
-  os.remove(local_query_file)
+      content = ""
+      print "Done with settings.. will execute the query now"
 
+
+      if '4' not in opts.query_num:
+        client.execute(CLEAN_QUERY.replace(";",""))
+        execTime, content = execute_thrift(client, "DROP TABLE IF EXISTS scratch_rank", content)
+        execTime, content = execute_thrift(client, "CREATE TABLE scratch_rank AS SELECT pageURL, pageRank FROM rankings WHERE pageRank > 1000", content)
+        execTime, content = execute_thrift(client, "DROP TABLE result", content)
+        execTime, content = execute_thrift(client, query_list.replace(";",""), content)
+      else:
+        opts.query_num = '4_HIVE'
+        execTime, content = execute_thrift(client, "DROP TABLE IF EXISTS url_counts_partial", content)
+        execTime, content = execute_thrift(client, "CREATE TABLE url_counts_partial (sourcePage string, destPage string, count int) stored as orc", content)
+        part_a_execTime, content = execute_thrift(client, "INSERT OVERWRITE TABLE url_counts_partial SELECT TRANSFORM (line) USING \"python /tmp/url_count.py\" as (sourcePage, destPage, count) from documents", content)
+        execTime, content = execute_thrift(client, "DROP TABLE IF EXISTS url_counts_total", content)
+        execTime, content = execute_thrift(client, "CREATE TABLE url_counts_total (sourcePage string, destPage string, count int) stored as orc", content)
+        part_b_execTime, content = execute_thrift(client, "INSERT OVERWRITE TABLE url_counts_total AS SELECT SUM(count) AS totalCount, destpage FROM url_counts_partial GROUP BY destpage", content)
+        execTime = part_a_execTime + part_b_execTime
+
+      results.append(execTime)
+      contents.append(content)
+
+      print "Result: ", str(execTime)
+      print "Raw Times: ", content
+
+    print "Closing the connection"
+    transport.close()
+
+  except Thrift.TException, tx:
+    print '%s' % (tx.message)
+
+  # Clean-up
+  #ssh_hive("rm /tmp/%s*" % prefix)
+  print "Clean Up...."
+  fileName = '/tmp/' + prefix + '_results'
+  fo = open(fileName, 'w')
+  fo.write(prettylist(results).replace(",",""))
+  fo.close()
+
+  #os.remove(local_results_file)
+  #os.remove(local_query_file)
   return results, contents
+
+
 
 
 def run_hive_cdh_benchmark(opts):
@@ -711,7 +756,7 @@ def run_hive_cdh_benchmark(opts):
     contents.append(content)
 
     # Clean-up
-    #ssh_hive("rm /mnt/%s*" % prefix)
+    #ssh_hive("rm /tmp/%s*" % prefix)
     print "Clean Up...."
     ssh_hive("rm /tmp/%s_results" % prefix)
     os.remove(local_results_file)
@@ -790,10 +835,10 @@ def main():
   fname = opts.prefix + fname
 
   def prettylist(lst):
-    return ",".join([str(k) for k in lst]) 
+    return ",".join([str(k) for k in lst])
 
   output = StringIO()
-  outfile = open('results/%s_%s_%s' % (fname, opts.query_num, datetime.datetime.now()), 'w')
+  outfile = open('/tmp/results/%s_%s_%s' % (fname, opts.query_num, datetime.datetime.now()), 'w')
 
   try:
     if not opts.redshift:

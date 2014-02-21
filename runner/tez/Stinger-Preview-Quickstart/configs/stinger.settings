@@ -37,3 +37,23 @@ set hive.input.format=org.apache.hadoop.hive.ql.io.HiveInputFormat;
 
 set hive.limit.pushdown.memory.usage=0.02;
 
+set hive.execution.engine=tez;
+set tez.runtime.intermdiate-input.is-compressed=true;
+set tez.am.aggressive.scheduling=true;
+set tez.am.container.reuse.enabled=true;
+set tez.am.container.reuse.rack-fallback.enabled=true;
+set tez.am.container.reuse.non-local-fallback.enabled=true;
+set tez.runtime.intermediate-output.should-compress=true;
+set tez.runtime.intermediate-output.compress.codec=org.apache.hadoop.io.compress.SnappyCodec;
+set tez.runtime.intermdiate-input.is-compressed=true;
+set tez.runtime.intermediate-input.compress.codec=org.apache.hadoop.io.compress.SnappyCodec;
+set tez.session.pre-warm.enabled=true;
+set tez.runtime.io.sort.mb=1024;
+set hive.limit.pushdown.memory.usage=0.3;
+set hive.stats.autogather=false;
+set mapred.map.child.java.opts=-server -Xmx3584m -Djava.net.preferIPv4Stack=true -XX:+UseNUMA -XX:+UseParallelGC;
+set mapred.reduce.child.java.opts=-server -Xmx3584m -Djava.net.preferIPv4Stack=true -XX:+UseNUMA -XX:+UseParallelGC;
+set mapreduce.map.memory.mb=4096;
+set mapreduce.reduce.memory.mb=4096;
+set hive.optimize.index.filter=true;
+set hive.merge.mapfiles=false; 
