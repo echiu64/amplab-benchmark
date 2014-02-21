@@ -31,7 +31,7 @@ set hive.auto.convert.join.noconditionaltask.size=64000000;
 
 set hive.vectorized.groupby.maxentries=1024;
 set hive.vectorized.groupby.checkinterval=1024;
-set hive.vectorized.groupby.flush.percent=1.0;
+set hive.vectorized.groupby.flush.percent=0.33;
 
 set hive.input.format=org.apache.hadoop.hive.ql.io.HiveInputFormat;
 
@@ -57,3 +57,4 @@ set mapreduce.map.memory.mb=4096;
 set mapreduce.reduce.memory.mb=4096;
 set hive.optimize.index.filter=true;
 set hive.merge.mapfiles=false; 
+set hive.exec.reducers.bytes.per.reducer=209715200;
